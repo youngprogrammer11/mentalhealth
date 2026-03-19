@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MindSpace – Mental Wellness Check</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { background: #0b1c17; font-family: 'DM Sans', sans-serif; color: #e4ede8; }
+  a { text-decoration: none; color: inherit; }
+  button { font-family: 'DM Sans', sans-serif; cursor: pointer; }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: #0b1c17; }
+  ::-webkit-scrollbar-thumb { background: #1e3d30; border-radius: 4px; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .fade-up { animation: fadeUp 0.45s ease both; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+/* ─────────────────────────────
+   CLINICAL DATA
+───────────────────────────── */
+const TOOLS = {
+  phq: {
+    id:"phq", label:"PHQ-9", fullName:"Patient Health Questionnaire", icon:"🌧", color:"#6db8f0",
+    about:"The PHQ-9 is the gold-standard WHO-endorsed depression screening tool, validated in 80+ languages and used globally in primary care settings.",
+    timeframe:"Over the last 2 weeks, how often have you been bothered by:",
+    questions:[
+      "Little interest or pleasure in doing things?",
+      "Feeling down, depressed, or hopeless?",
+      "Trouble falling or staying asleep, or sleeping too much?",
+      "Feeling tired or having little energy?",
+      "Poor appetite or overeating?",
+      "Feeling bad about yourself — or that you are a failure, or have let yourself or your family down?",
+      "Trouble concentrating on things, such as reading the news or watching TV?",
+      "Moving or speaking so slowly that other people could have noticed? Or the opposite — being so fidgety or restless that you have been moving around a lot more than usual?",
+      "Thoughts that you would be better off dead, or of hurting yourself in some way?",
+    ],
+    options:["Not at all","Several days","More than half the days","Nearly every day"],
+    optionScores:[0,1,2,3],
+    reverseItems:[],
+    max:27,
+    severity(s){
+      if(s<=4)  return {label:"Minimal / None",  short:"Minimal",  color:"#4ecb8d", bg:"rgba(78,203,141,0.1)",  level:0};
+      if(s<=9)  return {label:"Mild",             short:"Mild",     color:"#a0d87a", bg:"rgba(160,216,122,0.1)", level:1};
+      if(s<=14) return {label:"Moderate",         short:"Moderate", color:"#f5c97a", bg:"rgba(245,201,122,0.1)", level:2};
+      if(s<=19) return {label:"Moderately Severe",short:"Mod-Severe",color:"#f0956a",bg:"rgba(240,149,106,0.1)", level:3};
+      return           {label:"Severe",           short:"Severe",   color:"#e0635a", bg:"rgba(224,99,90,0.1)",   level:4};
+    },
+    clinicalNote:"Score ≥10 warrants clinical attention. A score of 10 has 88% sensitivity and 88% specificity for Major Depression (Kroenke et al., 2001).",
+    duration:"9 questions · ~3 min",
+  },
+  gad: {
+    id:"gad", label:"GAD-7", fullName:"Generalised Anxiety Disorder Scale", icon:"🌀", color:"#b48ef0",
+    about:"The GAD-7 is a validated WHO-recommended anxiety screening tool used in over 50 countries and recommended by NICE (UK), APA (USA), and multiple African health ministries.",
+    timeframe:"Over the last 2 weeks, how often have you been bothered by:",
+    questions:[
+      "Feeling nervous, anxious, or on edge?",
+      "Not being able to stop or control worrying?",
+      "Worrying too much about different things?",
+      "Trouble relaxing?",
+      "Being so restless that it is hard to sit still?",
+      "Becoming easily annoyed or irritable?",
+      "Feeling afraid, as if something awful might happen?",
+    ],
+    options:["Not at all","Several days","More than half the days","Nearly every day"],
+    optionScores:[0,1,2,3],
+    reverseItems:[],
+    max:21,
+    severity(s){
+      if(s<=4)  return {label:"Minimal",  short:"Minimal",  color:"#4ecb8d", bg:"rgba(78,203,141,0.1)",  level:0};
+      if(s<=9)  return {label:"Mild",     short:"Mild",     color:"#a0d87a", bg:"rgba(160,216,122,0.1)", level:1};
+      if(s<=14) return {label:"Moderate", short:"Moderate", color:"#f5c97a", bg:"rgba(245,201,122,0.1)", level:2};
+      return           {label:"Severe",   short:"Severe",   color:"#e0635a", bg:"rgba(224,99,90,0.1)",   level:4};
+    },
+    clinicalNote:"Score ≥10 has 89% sensitivity and 82% specificity for GAD. The GAD-7 also reliably detects panic disorder, social anxiety, and PTSD.",
+    duration:"7 questions · ~2 min",
+  },
+  pss: {
+    id:"pss", label:"PSS-10", fullName:"Perceived Stress Scale", icon:"⚡", color:"#f5c97a",
+    about:"The PSS-10 is the world's most widely-used psychological stress measure, developed by Cohen et al. (1983) at Carnegie Mellon University, validated in 30+ languages.",
+    timeframe:"In the last month, how often have you:",
+    questions:[
+      "Been upset because of something that happened unexpectedly?",
+      "Felt that you were unable to control the important things in your life?",
+      "Felt nervous and stressed?",
+      "Felt confident about your ability to handle your personal problems?",
+      "Felt that things were going your way?",
+      "Found that you could not cope with all the things that you had to do?",
+      "Been able to control irritations in your life?",
+      "Felt that you were on top of things?",
+      "Been angered because of things that were outside of your control?",
+      "Felt difficulties were piling up so high that you could not overcome them?",
+    ],
+    options:["Never","Almost Never","Sometimes","Fairly Often","Very Often"],
+    optionScores:[0,1,2,3,4],
+    reverseItems:[3,4,6,7],
+    max:40,
+    severity(s){
+      if(s<=13) return {label:"Low Stress",      short:"Low",      color:"#4ecb8d", bg:"rgba(78,203,141,0.1)",  level:0};
+      if(s<=26) return {label:"Moderate Stress", short:"Moderate", color:"#f5c97a", bg:"rgba(245,201,122,0.1)", level:2};
+      return           {label:"High Stress",     short:"High",     color:"#e0635a", bg:"rgba(224,99,90,0.1)",   level:3};
+    },
+    clinicalNote:"Items 4, 5, 7 & 8 are positively worded and are reverse-scored. Higher scores indicate greater perceived stress. Not a diagnostic tool but a validated self-report measure.",
+    duration:"10 questions · ~3 min",
+    reverseNote:"Note: 4 questions ask about positive coping — your answers will be reversed in scoring.",
+  },
+};
+
+const RESOURCES = [
+  { name:"Mentally Aware Nigeria (MANI)", detail:"Crisis helpline · 0809 648 8485 · Free & confidential · 24/7", href:"tel:08096488485", tag:"Crisis Line" },
+  { name:"Nigeria Suicide Prevention Initiative", detail:"0800 000 6463 · Free, anonymous, nationwide", href:"tel:08000006463", tag:"Crisis Line" },
+  { name:"Nigerian Medical Association (NMA)", detail:"Find certified psychiatrists & therapists near you", href:"https://nma.org.ng", tag:"Find a Doctor" },
+  { name:"Asido Foundation", detail:"Mental health advocacy & free counselling sessions, Lagos", href:"https://asidofoundation.org", tag:"Counselling" },
+  { name:"She Writes Woman", detail:"Mental health helpline for women · 0800 800 8008", href:"tel:08008008008", tag:"Women's Support" },
+  { name:"LUTH Neuropsychiatric Dept., Lagos", detail:"08033035888 · Government hospital psychiatric services", href:"tel:08033035888", tag:"Hospital" },
+  { name:"UCH Psychiatry Dept., Ibadan", detail:"University College Hospital · 08077777755", href:"tel:08077777755", tag:"Hospital" },
+  { name:"Recovery Nigeria", detail:"Substance abuse & co-occurring mental health disorders", href:"https://recoverynigeria.com", tag:"Recovery" },
+];
+
+/* ─────────────────────────────
+   TIPS DATABASE
+───────────────────────────── */
+const TIPS_DB = {
+  phq:{
+    0:[
+      {icon:"🌱",text:"You're doing well — maintain regular sleep, movement, and social connection as your mental health foundation."},
+      {icon:"🏃",text:"Even 20 minutes of brisk walking 3–5 times per week reduces depression risk by up to 30% (Harvard Medical School)."},
+      {icon:"📔",text:"Gratitude journalling for 5 minutes a day has been shown to improve long-term mood and wellbeing."},
+    ],
+    1:[
+      {icon:"👥",text:"Reach out to at least one trusted person this week. Social isolation worsens depression — connection is medicine."},
+      {icon:"📵",text:"Reduce screen time to under 2 hours daily; studies link heavy social media use with significantly increased depression risk."},
+      {icon:"💤",text:"Poor sleep and depression feed each other. Aim for consistent sleep and wake times, even on weekends."},
+      {icon:"🎯",text:"Set one small, achievable goal daily. Depression shrinks our world — small wins rebuild momentum."},
+    ],
+    2:[
+      {icon:"🩺",text:"A score in this range warrants professional attention. Speaking to a doctor is a sign of strength, not weakness."},
+      {icon:"🧠",text:"Cognitive Behavioural Therapy (CBT) has the strongest evidence base for moderate depression — ask your doctor for a referral."},
+      {icon:"📵",text:"Limit alcohol completely if possible. Alcohol is a central nervous system depressant and directly worsens depression."},
+      {icon:"🤝",text:"Tell someone you trust — a family member, a friend, or a colleague. Silence makes depression heavier."},
+    ],
+    3:[
+      {icon:"🚨",text:"Your score suggests moderately severe depression. Please contact a doctor or mental health professional this week."},
+      {icon:"📞",text:"Call MANI (0809 648 8485) if you need to talk to someone right now. They are free, confidential, and available 24/7."},
+      {icon:"❤️",text:"Depression is a medical condition — not a personal failure, spiritual weakness, or character flaw. Treatment works."},
+      {icon:"🏥",text:"LUTH and UCH both have psychiatric outpatient clinics. You do not need a referral to walk in."},
+    ],
+    4:[
+      {icon:"🚨",text:"Your score indicates severe depression. Please seek medical help today — this is a medical emergency."},
+      {icon:"📞",text:"Call MANI now: 0809 648 8485. Or go to your nearest Emergency Department or neuropsychiatric hospital."},
+      {icon:"❤️",text:"You are not alone. Millions of people have recovered from severe depression with proper treatment. Help exists."},
+      {icon:"🙏",text:"If you have thoughts of harming yourself, please contact emergency services or go to a hospital immediately."},
+    ],
+  },
+  gad:{
+    0:[
+      {icon:"🧘",text:"Great baseline — maintain regular breathing exercises. Box breathing (4-4-4-4) activates the parasympathetic nervous system."},
+      {icon:"🍵",text:"Keep caffeine moderate. Caffeine raises cortisol and directly amplifies anxiety symptoms — limit to 1–2 cups daily."},
+      {icon:"📅",text:"Consistent daily routines significantly reduce background anxiety by reducing uncertainty and the need for constant decisions."},
+    ],
+    1:[
+      {icon:"✍️",text:"The 'worry dump' technique: write every worry down, then for each one write a realistic best/worst/likely outcome."},
+      {icon:"🎵",text:"10 minutes of slow-paced music, prayer, or guided meditation daily reduces cortisol levels measurably within 2 weeks."},
+      {icon:"🚶",text:"Physical exercise metabolises excess adrenaline and cortisol — the chemical drivers of anxiety. Walk, run, swim or dance daily."},
+      {icon:"📱",text:"Delete or mute news apps for 1 week. Anxiety feeds on uncertainty — constant news exposure amplifies the stress response."},
+    ],
+    2:[
+      {icon:"🧠",text:"CBT for anxiety has a 60–80% success rate. Ask your doctor for a referral or search for licensed therapists in Nigeria."},
+      {icon:"⏰",text:"Schedule a 20-minute 'worry window' daily. When anxious thoughts arise outside it, write them down and postpone them."},
+      {icon:"🩺",text:"Moderate anxiety warrants professional assessment. Don't wait — anxiety disorders are among the most treatable mental health conditions."},
+      {icon:"💊",text:"Medication (SSRIs/SNRIs) combined with therapy has the highest evidence base for moderate-to-severe anxiety. Ask your doctor."},
+    ],
+    3:[["🚨","Severe anxiety significantly impairs daily functioning. Please contact a mental health professional or your doctor today."],["📞","MANI (0809 648 8485) and She Writes Woman (0800 800 8008) offer immediate, free phone support."],["❤️","Severe anxiety is a recognised medical condition. It is not 'overthinking' or weakness — it is biology, and it is treatable."],["🏥","Neuropsychiatric hospitals in Lagos, Ibadan, Enugu, Kano, and Benin City all offer outpatient psychiatric services."]].map(([icon,text])=>({icon,text})),
+    4:[
+      {icon:"🚨",text:"Your anxiety level is severe. Please seek professional support today — contact a doctor, helpline, or hospital."},
+      {icon:"📞",text:"Nigeria Suicide Prevention Initiative: 0800 000 6463. MANI: 0809 648 8485. Both are free and confidential."},
+      {icon:"❤️",text:"Recovery from severe anxiety is absolutely possible. You deserve support — please reach out to someone today."},
+    ],
+  },
+  pss:{
+    0:[
+      {icon:"🌿",text:"Your stress levels are well-managed. Keep your coping strategies — they are clearly working for you."},
+      {icon:"🧘",text:"Regular mindfulness practice maintains low cortisol. Even 10 minutes of stillness daily makes a measurable difference."},
+      {icon:"💪",text:"You appear to have good perceived control over your life — this is one of the strongest predictors of long-term mental wellbeing."},
+    ],
+    2:[
+      {icon:"⏳",text:"Identify your 3 biggest stressors and categorise each: 'Can I control this?' Act on what you can; accept what you cannot."},
+      {icon:"🚫",text:"Learn to say no. Overcommitment is the single most common driver of moderate chronic stress in working-age Nigerians."},
+      {icon:"🏋️",text:"Exercise is the most effective natural stress reducer available. Aim for 150 minutes of moderate activity per week (WHO recommendation)."},
+      {icon:"🛌",text:"Sleep deprivation multiplies perceived stress. Protect 7–9 hours and avoid screens 1 hour before bed."},
+    ],
+    3:[
+      {icon:"🚨",text:"Your stress level is high and chronic stress at this level significantly raises risk of depression, anxiety, and physical illness."},
+      {icon:"🩺",text:"High chronic stress is a health risk — it is linked to hypertension, weakened immunity, and burnout. Talk to your doctor."},
+      {icon:"🤝",text:"Stress at this level is rarely resolved alone. A counsellor, therapist, or even a trusted mentor can help you regain perspective."},
+      {icon:"📞",text:"Asido Foundation in Lagos offers free counselling sessions. Reach out via asidofoundation.org."},
+    ],
+  },
+};
+
+function getTips(toolId, level) {
+  const pool = TIPS_DB[toolId];
+  return pool[level] || pool[0];
+}
+
+/* ─────────────────────────────
+   SHARED COMPONENTS
+───────────────────────────── */
+const C = {
+  bg:"#0b1c17", s1:"#112219", s2:"#182e24", s3:"#1e3a2e",
+  accent:"#4ecb8d", muted:"#6b9e82", text:"#e4ede8", border:"rgba(255,255,255,0.07)",
+};
+
+function Logo() {
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:40}}>
+      <div style={{width:40,height:40,background:"linear-gradient(135deg,#4ecb8d,#27a066)",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>🌿</div>
+      <span style={{fontSize:22,fontWeight:700,letterSpacing:-0.3}}>Mind<span style={{color:C.accent}}>Space</span></span>
+    </div>
+  );
+}
+
+function Btn({onClick,disabled,children,variant="primary",size="md"}){
+  const base={display:"inline-flex",alignItems:"center",gap:8,borderRadius:100,border:"none",fontFamily:"inherit",fontWeight:600,transition:"all 0.2s",cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.4:1};
+  const sizes={md:{padding:"13px 28px",fontSize:15},sm:{padding:"9px 20px",fontSize:13}};
+  const variants={
+    primary:{background:"linear-gradient(135deg,#4ecb8d,#27a066)",color:"#0b1c17"},
+    outline:{background:"transparent",border:"1px solid rgba(78,203,141,0.4)",color:C.accent},
+    ghost:{background:"transparent",color:C.muted,border:"1px solid rgba(255,255,255,0.1)"},
+  };
+  return <button onClick={!disabled?onClick:undefined} style={{...base,...sizes[size],...variants[variant]}}>{children}</button>;
+}
+
+function StatCard({value,label,sub}){
+  return (
+    <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:16,padding:"20px 22px",flex:1,minWidth:140}}>
+      <div style={{fontSize:28,fontWeight:700,color:C.accent,lineHeight:1,marginBottom:4}}>{value}</div>
+      <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:3}}>{label}</div>
+      {sub&&<div style={{fontSize:11,color:C.muted,lineHeight:1.4}}>{sub}</div>}
+    </div>
+  );
+}
+
+/* ─────────────────────────────
+   SCREEN 1 — LANDING
+───────────────────────────── */
+function Landing({onStart}){
+  return (
+    <div style={{fontFamily:"'DM Sans',sans-serif",background:C.bg,minHeight:"100vh",color:C.text,padding:"36px 20px 80px"}}>
+      <div style={{maxWidth:660,margin:"0 auto"}} className="fade-up">
+        <Logo/>
+        <div style={{display:"inline-block",background:"rgba(78,203,141,0.1)",border:"1px solid rgba(78,203,141,0.25)",borderRadius:100,padding:"5px 14px",fontSize:11,color:C.accent,fontWeight:600,letterSpacing:2,textTransform:"uppercase",marginBottom:20}}>Mental Wellness Check</div>
+        <h1 style={{fontSize:"clamp(36px,7vw,60px)",fontWeight:300,lineHeight:1.05,letterSpacing:-1,marginBottom:18}}>
+          How are you<br/><em style={{fontStyle:"italic",color:C.accent}}>really</em> doing?
+        </h1>
+        <p style={{fontSize:16,color:C.muted,lineHeight:1.75,marginBottom:40,maxWidth:480,fontWeight:300}}>
+          A private, anonymous mental wellness check using three internationally validated clinical tools — freely available to every Nigerian.
+        </p>
+
+        {/* Stats */}
+        <div style={{marginBottom:40}}>
+          <p style={{fontSize:11,letterSpacing:2,textTransform:"uppercase",color:C.muted,fontWeight:600,marginBottom:14}}>Nigeria Mental Health Facts</p>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <StatCard value="40M+" label="Nigerians affected" sub="by a mental health condition"/>
+            <StatCard value="250" label="Psychiatrists" sub="for 220M+ people (WHO data)"/>
+            <StatCard value="70%" label="Seek non-orthodox" sub="treatment first (stigma)"/>
+            <StatCard value="3–4%" label="Health budget" sub="allocated to mental health"/>
+          </div>
+          <p style={{fontSize:11,color:C.muted,marginTop:10,fontStyle:"italic"}}>Sources: WHO, Cambridge Prisms Global Mental Health (2024), TC Health Nigeria</p>
+        </div>
+
+        {/* Badges */}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:40}}>
+          {["100% Anonymous","Clinically Validated","3 WHO-endorsed Tools","Free Forever","No Sign-up"].map(b=>(
+            <div key={b} style={{background:C.s1,border:"1px solid rgba(78,203,141,0.18)",borderRadius:100,padding:"6px 14px",fontSize:12,color:C.muted}}>✓ {b}</div>
+          ))}
+        </div>
+
+        <Btn onClick={onStart} size="md">Begin Check-in &nbsp;→</Btn>
+
+        {/* Tools preview */}
+        <div style={{marginTop:48,display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
+          {Object.values(TOOLS).map(t=>(
+            <div key={t.id} style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:16,padding:"18px 18px"}}>
+              <div style={{fontSize:24,marginBottom:8}}>{t.icon}</div>
+              <div style={{fontSize:14,fontWeight:600,marginBottom:4}}>{t.label}</div>
+              <div style={{fontSize:11,color:C.muted,lineHeight:1.5}}>{t.fullName}</div>
+              <div style={{fontSize:11,color:C.accent,fontWeight:500,marginTop:8}}>{t.duration}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────
+   SCREEN 2 — TOOL SELECT
+───────────────────────────── */
+function ToolSelect({onStart,onBack}){
+  const [selected,setSelected]=useState(new Set());
+  const toggle=(id)=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+  return (
+    <div style={{fontFamily:"'DM Sans',sans-serif",background:C.bg,minHeight:"100vh",color:C.text,padding:"36px 20px 80px"}}>
+      <div style={{maxWidth:660,margin:"0 auto"}} className="fade-up">
+        <Logo/>
+        <h2 style={{fontSize:30,fontWeight:300,letterSpacing:-0.5,marginBottom:8}}>Select your assessments</h2>
+        <p style={{color:C.muted,fontSize:14,fontWeight:300,marginBottom:32,lineHeight:1.6}}>Choose one, two, or all three. Each is internationally validated and takes only a few minutes.</p>
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:32}}>
+          {Object.values(TOOLS).map(t=>{
+            const sel=selected.has(t.id);
+            return (
+              <div key={t.id} onClick={()=>toggle(t.id)} style={{background:sel?C.s2:C.s1,border:`1px solid ${sel?C.accent:C.border}`,borderRadius:18,padding:"22px 24px",cursor:"pointer",transition:"all 0.2s",position:"relative",display:"flex",gap:18,alignItems:"flex-start"}}>
+                {sel&&<div style={{position:"absolute",top:14,right:14,width:22,height:22,background:C.accent,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#0b1c17",fontWeight:700}}>✓</div>}
+                <div style={{fontSize:32,flexShrink:0}}>{t.icon}</div>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                    <span style={{fontSize:17,fontWeight:700}}>{t.label}</span>
+                    <span style={{fontSize:10,color:t.color,background:`${t.color}18`,borderRadius:100,padding:"2px 10px",fontWeight:600,letterSpacing:0.5,textTransform:"uppercase"}}>{t.duration}</span>
+                  </div>
+                  <div style={{fontSize:13,color:C.text,fontWeight:500,marginBottom:4}}>{t.fullName}</div>
+                  <div style={{fontSize:12,color:C.muted,lineHeight:1.55}}>{t.about}</div>
+                  {t.reverseNote&&<div style={{marginTop:8,fontSize:11,color:"#f5c97a",background:"rgba(245,201,122,0.08)",borderRadius:8,padding:"5px 10px"}}>{t.reverseNote}</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+          <Btn onClick={()=>selected.size&&onStart(selected)} disabled={!selected.size}>Start {selected.size>0?`(${[...selected].map(id=>TOOLS[id].label).join(" + ")}) `:""}→</Btn>
+          <Btn onClick={onBack} variant="outline">← Back</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────
+   SCREEN 3 — QUIZ
+───────────────────────────── */
+function Quiz({queue,answers,qPos,onAnswer,onNext,onPrev}){
+  const {tool,qIndex}=queue[qPos];
+  const total=queue.length;
+  const pct=Math.round((qPos/total)*100);
+  const rawAnswer=answers[tool.id]?.[qIndex];
+  const answered=rawAnswer!==null&&rawAnswer!==undefined;
+  const isLast=qPos===total-1;
+  const isReverse=tool.reverseItems.includes(qIndex);
+
+  return (
+    <div style={{fontFamily:"'DM Sans',sans-serif",background:C.bg,minHeight:"100vh",color:C.text,padding:"36px 20px 80px"}}>
+      <div style={{maxWidth:660,margin:"0 auto"}} className="fade-up">
+        <Logo/>
+        {/* Progress */}
+        <div style={{marginBottom:28}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:C.muted,marginBottom:8,alignItems:"center"}}>
+            <span style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{width:20,height:20,background:`${tool.color}20`,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11}}>{tool.icon}</span>
+              {tool.label}
+            </span>
+            <span>{qPos+1} of {total} questions</span>
+          </div>
+          <div style={{height:4,background:C.s2,borderRadius:2,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${C.accent},#27a066)`,borderRadius:2,transition:"width 0.4s ease"}}/>
+          </div>
+        </div>
+
+        {/* Question card */}
+        <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:20,padding:"30px 28px",marginBottom:14}}>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:16}}>
+            <span style={{fontSize:11,letterSpacing:2,textTransform:"uppercase",color:C.accent,fontWeight:600}}>Q{qPos+1}</span>
+            {isReverse&&<span style={{fontSize:10,background:"rgba(245,201,122,0.1)",color:"#f5c97a",borderRadius:100,padding:"2px 8px",fontWeight:500}}>Positive item</span>}
+          </div>
+          <p style={{fontSize:12,color:C.muted,marginBottom:12,fontStyle:"italic"}}>{tool.timeframe}</p>
+          <p style={{fontSize:20,fontWeight:400,lineHeight:1.4,marginBottom:24}}>{tool.questions[qIndex]}</p>
+
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {tool.options.map((label,idx)=>{
+              const sel=rawAnswer===idx;
+              return (
+                <button key={idx} onClick={()=>onAnswer(idx)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 18px",borderRadius:12,border:`1px solid ${sel?C.accent:"rgba(255,255,255,0.08)"}`,cursor:"pointer",background:sel?"rgba(78,203,141,0.1)":"transparent",color:sel?C.accent:C.text,fontSize:14,fontWeight:300,textAlign:"left",width:"100%",fontFamily:"inherit",transition:"all 0.15s"}}>
+                  <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${sel?C.accent:"rgba(255,255,255,0.2)"}`,background:sel?C.accent:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#0b1c17",fontWeight:700}}>{sel?"✓":""}</div>
+                  <span style={{flex:1}}>{label}</span>
+                  <span style={{fontSize:11,color:sel?C.accent:C.muted,fontWeight:500}}>{tool.optionScores[idx]}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Clinical note */}
+        {qIndex===tool.questions.length-1&&(
+          <div style={{background:"rgba(78,203,141,0.05)",border:"1px solid rgba(78,203,141,0.15)",borderRadius:12,padding:"12px 16px",fontSize:12,color:C.muted,lineHeight:1.6,marginBottom:14}}>
+            📋 {tool.clinicalNote}
+          </div>
+        )}
+
+        {/* Q9 of PHQ9 special note */}
+        {tool.id==="phq"&&qIndex===8&&(
+          <div style={{background:"rgba(224,99,90,0.07)",border:"1px solid rgba(224,99,90,0.2)",borderRadius:12,padding:"12px 16px",fontSize:12,color:"#f0956a",lineHeight:1.6,marginBottom:14}}>
+            🆘 If you are having thoughts of self-harm right now, please call MANI immediately: <strong>0809 648 8485</strong> (free, 24/7).
+          </div>
+        )}
+
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <Btn size="sm" variant="outline" onClick={onPrev} disabled={qPos===0}>← Back</Btn>
+          <Btn size="sm" onClick={()=>answered&&onNext()} disabled={!answered}>{isLast?"See My Results →":"Next →"}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────
+   SCREEN 4 — RESULTS
+───────────────────────────── */
+function Results({answers,onRetake}){
+  const results=[];
+  Object.values(TOOLS).forEach(tool=>{
+    if(!answers[tool.id]) return;
+    let score=0;
+    answers[tool.id].forEach((raw,idx)=>{
+      if(raw===null||raw===undefined) return;
+      const val=tool.optionScores[raw];
+      const maxVal=tool.optionScores[tool.optionScores.length-1];
+      score+=tool.reverseItems.includes(idx)?(maxVal-val):val;
+    });
+    const sev=tool.severity(score);
+    results.push({tool,score,sev});
+  });
+
+  const worstLevel=results.reduce((a,r)=>Math.max(a,r.sev.level),0);
+  const headline=["You're doing well","Some areas to nurture","Worth paying attention to","Please consider reaching out","Please seek support today"][Math.min(worstLevel,4)];
+  const emoji=["💚","💛","🟡","🟠","🔴"][Math.min(worstLevel,4)];
+
+  const allTips=[];
+  results.forEach(({tool,sev})=>{
+    const levelKey=[0,1,2,2,3][Math.min(sev.level,4)];
+    getTips(tool.id,levelKey).forEach(t=>allTips.push(t));
+  });
+  const seen=new Set();
+  const tips=allTips.filter(t=>{if(seen.has(t.text))return false;seen.add(t.text);return true;}).slice(0,7);
+
+  const urgent=worstLevel>=3;
+
+  return (
+    <div style={{fontFamily:"'DM Sans',sans-serif",background:C.bg,minHeight:"100vh",color:C.text,padding:"36px 20px 80px"}}>
+      <div style={{maxWidth:660,margin:"0 auto"}} className="fade-up">
+        <Logo/>
+
+        {/* Hero result */}
+        <div style={{textAlign:"center",marginBottom:36,padding:"32px 0"}}>
+          <div style={{fontSize:56,marginBottom:12}}>{emoji}</div>
+          <h2 style={{fontSize:clamp(28,6,40),fontWeight:300,letterSpacing:-0.5,marginBottom:8}}>{headline}</h2>
+          <p style={{color:C.muted,fontSize:14,fontWeight:300}}>Based on your responses · {new Date().toLocaleDateString("en-NG",{day:"numeric",month:"long",year:"numeric"})}</p>
+        </div>
+
+        {/* Score cards */}
+        <div style={{display:"grid",gridTemplateColumns:`repeat(${results.length},1fr)`,gap:12,marginBottom:24}}>
+          {results.map(({tool,score,sev})=>(
+            <div key={tool.id} style={{background:C.s1,border:`1px solid ${sev.color}30`,borderRadius:18,padding:"22px 18px",textAlign:"center"}}>
+              <div style={{fontSize:20,marginBottom:6}}>{tool.icon}</div>
+              <div style={{fontSize:11,letterSpacing:1.5,textTransform:"uppercase",color:C.muted,marginBottom:8}}>{tool.label}</div>
+              <div style={{fontSize:44,fontWeight:700,color:sev.color,lineHeight:1,marginBottom:4}}>{score}</div>
+              <div style={{fontSize:10,color:C.muted,marginBottom:10}}>out of {tool.max}</div>
+              <div style={{background:sev.bg,borderRadius:100,padding:"5px 12px",fontSize:12,fontWeight:600,color:sev.color,display:"inline-block"}}>{sev.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Severity legend */}
+        {results.map(({tool,score,sev})=>(
+          <div key={tool.id} style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px",marginBottom:10,fontSize:13}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <span>{tool.icon}</span>
+              <strong>{tool.label} — {sev.label}</strong>
+              <span style={{marginLeft:"auto",color:C.muted,fontSize:11}}>{score}/{tool.max} points</span>
+            </div>
+            <div style={{display:"flex",gap:3,marginBottom:8}}>
+              {tool.id==="phq"&&[{r:"0–4",l:"None"},{r:"5–9",l:"Mild"},{r:"10–14",l:"Moderate"},{r:"15–19",l:"Mod-Sev"},{r:"20–27",l:"Severe"}].map(({r,l},i)=>(
+                <div key={i} style={{flex:1,background:["#4ecb8d","#a0d87a","#f5c97a","#f0956a","#e0635a"][i]+"22",borderRadius:6,padding:"4px 4px",textAlign:"center",fontSize:9,color:["#4ecb8d","#a0d87a","#f5c97a","#f0956a","#e0635a"][i],fontWeight:600,border:`1px solid ${score>=[0,5,10,15,20][i]&&score<=[4,9,14,19,27][i]?["#4ecb8d","#a0d87a","#f5c97a","#f0956a","#e0635a"][i]:"transparent"}`}}>{l}<br/><span style={{fontSize:8,opacity:0.7}}>{r}</span></div>
+              ))}
+              {tool.id==="gad"&&[{r:"0–4",l:"None"},{r:"5–9",l:"Mild"},{r:"10–14",l:"Moderate"},{r:"15–21",l:"Severe"}].map(({r,l},i)=>(
+                <div key={i} style={{flex:1,background:["#4ecb8d","#a0d87a","#f5c97a","#e0635a"][i]+"22",borderRadius:6,padding:"4px 4px",textAlign:"center",fontSize:9,color:["#4ecb8d","#a0d87a","#f5c97a","#e0635a"][i],fontWeight:600,border:`1px solid ${score>=[0,5,10,15][i]&&score<=[4,9,14,21][i]?["#4ecb8d","#a0d87a","#f5c97a","#e0635a"][i]:"transparent"}`}}>{l}<br/><span style={{fontSize:8,opacity:0.7}}>{r}</span></div>
+              ))}
+              {tool.id==="pss"&&[{r:"0–13",l:"Low"},{r:"14–26",l:"Moderate"},{r:"27–40",l:"High"}].map(({r,l},i)=>(
+                <div key={i} style={{flex:1,background:["#4ecb8d","#f5c97a","#e0635a"][i]+"22",borderRadius:6,padding:"4px 4px",textAlign:"center",fontSize:9,color:["#4ecb8d","#f5c97a","#e0635a"][i],fontWeight:600,border:`1px solid ${score>=[0,14,27][i]&&score<=[13,26,40][i]?["#4ecb8d","#f5c97a","#e0635a"][i]:"transparent"}`}}>{l}<br/><span style={{fontSize:8,opacity:0.7}}>{r}</span></div>
+              ))}
+            </div>
+            <div style={{fontSize:11,color:C.muted,lineHeight:1.5}}>{tool.clinicalNote}</div>
+          </div>
+        ))}
+
+        {/* Disclaimer */}
+        <div style={{background:"rgba(245,201,122,0.06)",border:"1px solid rgba(245,201,122,0.2)",borderRadius:14,padding:"16px 20px",fontSize:12,color:C.muted,lineHeight:1.7,marginBottom:28,marginTop:20}}>
+          <strong style={{color:"#f5c97a"}}>⚠️ Clinical Disclaimer:</strong> These scores are screening tools for self-awareness only and do <em>not</em> constitute a clinical diagnosis. They do not replace assessment by a qualified mental health professional. If your scores are in the moderate-to-severe range, or if you are in distress, please seek professional help.
+        </div>
+
+        {/* Crisis banner */}
+        {urgent&&(
+          <div style={{background:"rgba(224,99,90,0.1)",border:"1px solid rgba(224,99,90,0.3)",borderRadius:14,padding:"18px 20px",marginBottom:28}}>
+            <div style={{fontSize:15,fontWeight:600,color:"#f0956a",marginBottom:8}}>🆘 Immediate Support Available</div>
+            <div style={{fontSize:13,color:C.muted,lineHeight:1.7}}>
+              Your results suggest you may benefit from speaking to someone right now.<br/>
+              <strong style={{color:C.text}}>MANI Helpline:</strong> <a href="tel:08096488485" style={{color:C.accent}}>0809 648 8485</a> &nbsp;·&nbsp;
+              <strong style={{color:C.text}}>Suicide Prevention:</strong> <a href="tel:08000006463" style={{color:C.accent}}>0800 000 6463</a><br/>
+              Both are <strong>free, confidential, and available 24/7</strong>.
+            </div>
+          </div>
+        )}
+
+        {/* Tips */}
+        <h3 style={{fontSize:20,fontWeight:500,marginBottom:14}}>Personalised Recommendations</h3>
+        <div style={{marginBottom:32}}>
+          {tips.map((tip,i)=>(
+            <div key={i} style={{display:"flex",gap:12,padding:"14px 18px",background:C.s1,borderRadius:12,marginBottom:8,border:`1px solid ${C.border}`,fontSize:13,color:C.muted,lineHeight:1.65,fontWeight:300,alignItems:"flex-start"}}>
+              <span style={{fontSize:18,flexShrink:0,marginTop:1}}>{tip.icon}</span>
+              <span>{tip.text}</span>
+            </div>
+          ))}
+        </div>
+
+        <hr style={{border:"none",borderTop:`1px solid ${C.border}`,margin:"28px 0"}}/>
+
+        {/* Resources */}
+        <h3 style={{fontSize:20,fontWeight:500,marginBottom:6}}>Nigerian Mental Health Resources</h3>
+        <p style={{fontSize:12,color:C.muted,marginBottom:18}}>Verified resources — free, accessible, and confidential.</p>
+        <div style={{marginBottom:36}}>
+          {RESOURCES.map(r=>(
+            <a key={r.name} href={r.href} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:14,background:C.s1,border:`1px solid ${C.border}`,borderRadius:12,padding:"15px 18px",marginBottom:8,color:"inherit",transition:"border-color 0.2s"}}>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                  <span style={{fontSize:13,fontWeight:600,color:C.text}}>{r.name}</span>
+                  <span style={{fontSize:10,background:"rgba(78,203,141,0.1)",color:C.accent,borderRadius:100,padding:"2px 8px",fontWeight:500,flexShrink:0}}>{r.tag}</span>
+                </div>
+                <div style={{fontSize:12,color:C.muted,fontWeight:300}}>{r.detail}</div>
+              </div>
+              <span style={{color:C.accent,fontSize:16,flexShrink:0}}>→</span>
+            </a>
+          ))}
+        </div>
+
+        {/* WHO note */}
+        <div style={{background:C.s1,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px",marginBottom:32,fontSize:12,color:C.muted,lineHeight:1.7}}>
+          <strong style={{color:C.text}}>About these tools:</strong> The PHQ-9, GAD-7, and PSS-10 are all in the public domain and endorsed by the World Health Organization. They are used in primary care settings across 80+ countries. These tools were developed by Spitzer, Williams & Kroenke (PHQ-9), Spitzer et al. (GAD-7), and Cohen, Kamarck & Mermelstein (PSS-10).
+        </div>
+
+        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+          <Btn onClick={onRetake}>Take Again</Btn>
+          <Btn variant="outline" onClick={()=>window.print()}>Save / Print Results</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function clamp(val,min,max){return Math.min(Math.max(val,min),max);}
+
+/* ─────────────────────────────
+   ROOT APP
+───────────────────────────── */
+function App(){
+  const [screen,setScreen]=useState("landing");
+  const [queue,setQueue]=useState([]);
+  const [answers,setAnswers]=useState({});
+  const [qPos,setQPos]=useState(0);
+
+  const startAssessment=(selected)=>{
+    const q=[],ans={};
+    Object.values(TOOLS).forEach(tool=>{
+      if(!selected.has(tool.id)) return;
+      ans[tool.id]=new Array(tool.questions.length).fill(null);
+      tool.questions.forEach((_,i)=>q.push({tool,qIndex:i}));
+    });
+    setQueue(q);setAnswers(ans);setQPos(0);setScreen("quiz");
+  };
+
+  const handleAnswer=(rawIdx)=>{
+    const {tool,qIndex}=queue[qPos];
+    setAnswers(prev=>{const n={...prev};n[tool.id]=[...n[tool.id]];n[tool.id][qIndex]=rawIdx;return n;});
+  };
+
+  const handleNext=()=>{if(qPos<queue.length-1)setQPos(p=>p+1);else setScreen("results");};
+  const handleRetake=()=>{setQueue([]);setAnswers({});setQPos(0);setScreen("select");};
+
+  if(screen==="landing") return <Landing onStart={()=>setScreen("select")}/>;
+  if(screen==="select")  return <ToolSelect onStart={startAssessment} onBack={()=>setScreen("landing")}/>;
+  if(screen==="quiz")    return <Quiz queue={queue} answers={answers} qPos={qPos} onAnswer={handleAnswer} onNext={handleNext} onPrev={()=>qPos>0&&setQPos(p=>p-1)}/>;
+  if(screen==="results") return <Results answers={answers} onRetake={handleRetake}/>;
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
